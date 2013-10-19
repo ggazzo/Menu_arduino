@@ -1,0 +1,136 @@
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>
+#define sprint(a) lcd.print(a);Serial.print(a);
+LiquidCrystal_I2C lcd(0x20,20,4);
+
+void setup() {
+  pinMode(2, INPUT); // Pin 2
+  pinMode(3, INPUT); // Pin 4
+  pinMode(13, OUTPUT); // Pin 4
+  Serial.begin(9600);
+  lcd.init();                      // initialize the lcd 
+  // Print a message to the LCD.
+  lcd.backlight();
+  sprint("Inicializando");
+grau();
+  sprint("."); 
+  sprint(".");
+  sprint(".2"); 
+  simbolotermometro();
+  // put your setup code here, to run once:
+  lcd.setCursor(0,0);
+  
+
+  lcd.print("       Status       ");
+  lcd.setCursor(0,1);
+  lcd.print(" 1  9.0");
+  lcd.write(3);
+  lcd.print("    2 -1.0");
+  lcd.write(3);
+  lcd.setCursor(2,1);
+  lcd.write(2);
+  lcd.setCursor(13,1);
+  lcd.write(2);
+  lcd.setCursor(0,2);
+  lcd.print(" 3 -9.0");
+  lcd.write(3);
+  lcd.print("    4  2.0");  
+  lcd.write(3);
+  lcd.setCursor(2,2);
+  lcd.write(2);
+  lcd.setCursor(13,2);
+  lcd.write(2);
+
+//  attachInterrupt(0, decoder, CHANGE);
+
+
+
+}
+int dir;
+
+
+void simbolotermometro()
+{
+  byte termometro[8] = { // Cria um array de bytes com o simbolo de termometro
+    B00100,
+    B01010,
+    B01010,
+    B01110,
+    B01110,
+    B11111,
+    B11111,
+    B01110    };
+  lcd.createChar(2, termometro); // Cria o caractere personalizado 1 (termometro)
+}
+
+void grau()
+{
+  byte termometro[8] = { // Cria um array de bytes com o simbolo de termometro
+    B11100,
+    B10100,
+    B11100,
+    B00000,
+    B00000,
+    B00000,
+    B00000,
+    B00000    };
+  lcd.createChar(3, termometro); // Cria o caractere personalizado 1 (termometro)
+}
+
+
+void loop() {
+  if(dir) // CW motion in the rotary encoder
+  {    
+    lcd.clear();
+    if(dir==1)
+      lcd.print('direita');
+    else
+      lcd.print('esquerda');    
+    dir=0; // Reset the flag
+  }
+}
+/*
+void decoder()
+{
+  if (digitalRead(3) == digitalRead(2))
+  {
+    dir = 1; //if encoder channels are the same, direction is CW
+  }
+  else
+  {
+    dir = 2; //if they are not the same, direction is CCW
+  }
+}
+*/
+
+
+/*
+
+
+|<   Configuração   >|
+|Sensor:2            |
+|                    |
+|                    |
+
+
+
+
+
+|<   Configuração   >|
+|Sensor:1   VOLTAR   |
+| min            max |
+|-0.00         -0.00 |
+
+
+
+|       Status       |
+| 1$ 9.0º    2$ 9.0º |
+| 3$ 9.0º    4$ 9.0º |
+|                    |
+
+
+
+
+
+
+*/

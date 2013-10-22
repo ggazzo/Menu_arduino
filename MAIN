@@ -1,136 +1,336 @@
+#include <Menu.h>
+long counter_sensor;
 #include <Wire.h> 
 #include <LiquidCrystal_I2C.h>
-#define sprint(a) lcd.print(a);Serial.print(a);
-LiquidCrystal_I2C lcd(0x20,20,4);
+#define buttom_esquerda B00000010
+#define buttom_direita B00000001
+#define n_sensor 2
 
-void setup() {
-  pinMode(2, INPUT); // Pin 2
-  pinMode(3, INPUT); // Pin 4
-  pinMode(13, OUTPUT); // Pin 4
-  Serial.begin(9600);
-  lcd.init();                      // initialize the lcd 
-  // Print a message to the LCD.
-  lcd.backlight();
-  sprint("Inicializando");
-grau();
-  sprint("."); 
-  sprint(".");
-  sprint(".2"); 
-  simbolotermometro();
-  // put your setup code here, to run once:
-  lcd.setCursor(0,0);
+
+typedef void (* Event)(void*); //function pointer prototype to a function which takes an 'int' an returns 'void'
+
+
+struct Events {   
+  Event *enter;      
+  Event *execute;      
+  Event *leave;      
+  Event *refresh;      
+}; 
+
+
+
+
+class Page{
+private:
+  Event onEnter;
+  Event onExecute;
+  Event onLeave;
+  Event onRefresh;
+public:
+  int option;
+  Page(Event e, Event a, Event b,Event c){
+    this->onEnter = e;
+    this->onExecute = a;
+    this->onLeave = b;
+    this->onRefresh = c;      
+  };
+  void enter(void){
+    if(this->onEnter)this->onEnter(args);
+  };
   
+  void leave(void){
+    if(this->onLeave)this->onLeave(args);
+  };  
+  void execute(void){
+    if(this->onExecute)this->onExecute(args);
+  };      
+  void refresh(void){
+    if(this->onRefresh)this->onRefresh(args);
+  };  
+  void setArgs(void * args){
 
+      this->args = args;
+  };    
+  void add(Page * p){
+    if(!this->right){
+      this->right = p;
+      p->left = this;
+    }
+    else
+      this->right->add(p);
+  };
+  void addSubMenu(Page * p){
+    p->parent = this;
+    if(!this->child)
+      this->child = p;
+    else
+      this->child->add(p);
+  };
+  void * args;
+  Page * right;
+  Page * left;
+  Page * parent;
+  Page * child;    
+
+}; 
+class Menu{
+  Page * atual;
+
+  long time_refresh;
+public:
+  Page * root;
+  void add(Page * p){
+    if(!this->root){
+      this->root = p;
+      this->atual = p;
+      return;
+    }
+    this->atual->add(p);
+  } 
+  void addSubMenu(Page * p){
+    this->atual->addSubMenu(p);
+  } 
+
+
+  void execute()
+  {
+
+    this->atual->execute();
+    if(millis() - time_refresh < 500)
+      return;
+    this->atual->refresh();
+    time_refresh = millis();
+  }
+  void init(void)
+  {
+    this->atual = this->root;
+    this->atual->enter();
+  }
+
+  void enter(void){
+    if(!this->atual->child)
+      return;
+    this->atual = this->atual->child;
+    this->atual->enter();       
+
+  }
+  void back(void){
+    if(!this->atual->parent)
+      return;
+    this->atual->leave();      
+    this->atual = this->atual->parent;
+    this->atual->enter();       
+
+  }
+  void next(void){
+    if(!this->atual->right)
+      return;
+    this->atual = this->atual->right;
+    this->atual->enter();       
+  }
+
+  void prev(void){
+    if(!this->atual->left)
+      return;
+    this->atual = this->atual->left;
+    this->atual->enter();
+
+
+  }
+};
+
+
+int temp[n_sensor]={
+  0,0};
+int s_min[n_sensor]={
+  90,10};
+int s_max[n_sensor]={
+  100,120};
+
+LiquidCrystal_I2C lcd(0x20,20,4);  // set the LCD address to 0x20 for a 16 chars and 2 line display
+
+int sensor = 0;
+
+Menu m;
+
+struct parameters_sensor_page {
+  int * m;
+  int * mx;
+  int number;
+  int options;
+};
+
+
+
+
+Page p(&mainMenu,&main_execute,NULL,&mainRefresh);
+
+
+
+
+Page config1(&page,&main_execute,NULL,NULL);
+Page config2(&page,&main_execute,NULL,NULL);
+
+Page configSensors1(&enterConfigSensor,&main_execute,&configLeave,&configRefresh);
+Page configSensors2(&enterConfigSensor,&main_execute,&configLeave,&configRefresh);
+
+void setup()
+{
+  Serial.begin(9600);
+  lcd.init();
+  lcd.backlight();
+  menu_config();
+ }
+parameters_sensor_page sensor1;
+parameters_sensor_page sensor2;
+
+inline void menu_config(){
+  
+  sensor1.m = &s_min[0];
+  sensor1.mx = &s_max[0];  
+  sensor2.m = &s_min[1];
+  sensor2.mx = &s_max[1];
+  sensor1.number = 1;
+  sensor2.number = 2;
+  m.add(&p);
+  m.add(&config1);
+  m.add(&config2);
+  config1.setArgs(&sensor1);
+  config2.setArgs(&sensor2);
+  configSensors1.setArgs(&sensor1);
+  configSensors2.setArgs(&sensor2);
+  config1.addSubMenu(&configSensors1);  
+  config2.addSubMenu(&configSensors2);    
+  m.init(); 
+
+}
+
+
+
+int decoder;
+void loop()
+{
+  read_sensor();
+  m.execute();
+  if (Serial.available() > 0) {
+      Serial.println(*(*(parameters_sensor_page*)m.root->args).m);
+    char a =Serial.read();
+      Serial.println(*(*(parameters_sensor_page*)m.root->args).m);
+    Serial.print(a);
+    switch(a){
+    case 'w':
+      decoder = buttom_esquerda;
+      break;
+    case 's':
+      decoder = buttom_direita;
+      break;
+    case 'e':
+      decoder = 3;
+      break;
+    case 'b':
+      decoder = 4;
+      break;        
+    }
+      Serial.println(*(*(parameters_sensor_page*)m.root->args).m);
+  }
+  
+}
+
+void read_sensor(){
+  if(millis() - counter_sensor < 300 *6)
+    return;
+  for(int i = 0 ; i < n_sensor ; i++){
+    temp[i] = temp[i] >= 1000 ? random(temp[i]-5,temp[i]): temp[i] < -90? random(temp[i],temp[i]+5): random(temp[i]-5,temp[i]+5);
+  }
+  counter_sensor = millis();
+}
+
+
+void mainMenu(void* p)
+{
+  sensor = 0;
+  lcd.clear();
   lcd.print("       Status       ");
   lcd.setCursor(0,1);
-  lcd.print(" 1  9.0");
-  lcd.write(3);
-  lcd.print("    2 -1.0");
-  lcd.write(3);
-  lcd.setCursor(2,1);
-  lcd.write(2);
-  lcd.setCursor(13,1);
-  lcd.write(2);
+  lcd.print(" 1: 0.0");
   lcd.setCursor(0,2);
-  lcd.print(" 3 -9.0");
-  lcd.write(3);
-  lcd.print("    4  2.0");  
-  lcd.write(3);
-  lcd.setCursor(2,2);
-  lcd.write(2);
-  lcd.setCursor(13,2);
-  lcd.write(2);
+  lcd.print(" 2: 0.0");
 
-//  attachInterrupt(0, decoder, CHANGE);
-
-
+       Serial.println("hhhh");
+  Serial.println(*(*(parameters_sensor_page*)m.root->args).m);
 
 }
-int dir;
-
-
-void simbolotermometro()
-{
-  byte termometro[8] = { // Cria um array de bytes com o simbolo de termometro
-    B00100,
-    B01010,
-    B01010,
-    B01110,
-    B01110,
-    B11111,
-    B11111,
-    B01110    };
-  lcd.createChar(2, termometro); // Cria o caractere personalizado 1 (termometro)
-}
-
-void grau()
-{
-  byte termometro[8] = { // Cria um array de bytes com o simbolo de termometro
-    B11100,
-    B10100,
-    B11100,
-    B00000,
-    B00000,
-    B00000,
-    B00000,
-    B00000    };
-  lcd.createChar(3, termometro); // Cria o caractere personalizado 1 (termometro)
-}
-
-
-void loop() {
-  if(dir) // CW motion in the rotary encoder
-  {    
-    lcd.clear();
-    if(dir==1)
-      lcd.print('direita');
-    else
-      lcd.print('esquerda');    
-    dir=0; // Reset the flag
+void main_execute(void* p){
+  if(!decoder)
+    return;
+  switch(decoder){    
+  case buttom_direita:
+    m.next();
+    break;
+  case buttom_esquerda:
+    m.prev();
+    break;
+  case 3:
+    m.enter();
+    break;
+  case 4:
+    m.back();
+    break;
   }
+  decoder = 0;
 }
-/*
-void decoder()
+void mainRefresh(void* p){
+
+  lcd.setCursor(3,1);
+  if(temp[0] >= 0)
+    lcd.print(" ");      
+  lcd.print((float)temp[0]/10,1);
+  lcd.setCursor(3,2);
+  if(temp[1] >= 0)
+    lcd.print(" ");      
+  lcd.print((float) temp[1]/10,1);
+
+}
+void page(void* p)
 {
-  if (digitalRead(3) == digitalRead(2))
-  {
-    dir = 1; //if encoder channels are the same, direction is CW
-  }
-  else
-  {
-    dir = 2; //if they are not the same, direction is CCW
-  }
+  parameters_sensor_page s = *(parameters_sensor_page*)p;
+  lcd.setCursor(0,0);
+  lcd.print("<   Configuracao   >");
+  lcd.setCursor(0,1);
+  lcd.print("Sensor:");
+  lcd.print(s.number,DEC);
+  lcd.print("  ");
+  lcd.setCursor(0,2);
+  lcd.print("               ");
 }
-*/
+
+void configLeave(void* p)
+{
+  lcd.clear();
+}
+
+void configRefresh(void* p)
+{
 
 
-/*
+  //lcd.clear();
+}
 
 
-|<   Configuração   >|
-|Sensor:2            |
-|                    |
-|                    |
+void enterConfigSensor(void* p)
+{
+  parameters_sensor_page s = *(parameters_sensor_page*)p;
+  lcd.setCursor(13,1);  
+  lcd.print("voltar");  
+  lcd.setCursor(0,2);
+  lcd.print(" min            max ");
+  lcd.setCursor(0,3);
 
-
-
-
-
-|<   Configuração   >|
-|Sensor:1   VOLTAR   |
-| min            max |
-|-0.00         -0.00 |
-
-
-
-|       Status       |
-| 1$ 9.0º    2$ 9.0º |
-| 3$ 9.0º    4$ 9.0º |
-|                    |
+  
+  lcd.print(*s.m,DEC);
+  lcd.print("              ");
+  lcd.print(*s.mx,DEC);
+}
 
 
 
-
-
-
-*/
